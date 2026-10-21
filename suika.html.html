@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Suika Game Clone</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: #fdf5e6;
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+
+            font-family: Arial, sans-serif;
+
+            overflow: hidden;
+            user-select: none;
+        }
+
+        #ui {
+            margin-top: 15px;
+            text-align: center;
+            color: #5d4037;
+        }
+
+        .score-board {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        #score {
+            color: #e67e22;
+        }
+
+        #message {
+            margin: 6px 0 12px;
+            font-size: 15px;
+        }
+
+
+        #game-container {
+            position: relative;
+
+            width: 400px;
+            height: 600px;
+        }
+
+        canvas {
+            display: block;
+
+            width: 400px;
+            height: 600px;
+
+            border-left: 7px solid #8b4513;
+            border-right: 7px solid #8b4513;
+            border-bottom: 12px solid #8b4513;
+
+            box-shadow:
+                0 5px 25px rgba(0, 0, 0, 0.18);
+
+            cursor: crosshair;
+        }
+
+        #game-over {
+            display: none;
+
+            position: absolute;
+
+            top: 0;
+            left: 0;
+
+            width: 100%;
+            height: 100%;
+
+            background: rgba(60, 35, 20, 0.75);
+
+            align-items: center;
+            justify-content: center;
+
+            flex-direction: column;
+
+            color: white;
+
+            text-align: center;
+
+            z-index: 10;
+        }
+
+        #game-over h2 {
+            font-size: 42px;
+            margin: 0 0 10px;
+        }
+
+        #game-over p {
+            font-size: 21px;
+            margin: 5px 0 20px;
+        }
+
+        #restart {
+            border: none;
+
+            background: #ff8c42;
+            color: white;
+
+            padding: 12px 28px;
+
+            border-radius: 25px;
+
+            font-size: 16px;
+            font-weight: bold;
+
+            cursor: pointer;
+
+            transition: 0.2s;
+        }
+
+        #restart:hover {
+            background: #e8752f;
+            transform: scale(1.05);
+        }
+
+
+        @media (max-height: 750px) {
+
+            #ui {
+                margin-top: 5px;
+            }
+
+            #message {
+                margin: 3px 0 5px;
+            }
+
+            #game-container,
+            canvas {
+                width: min(400px, 90vw);
+                height: min(600px, 75vh);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui">
+
+        <div class="score-board">
+            Score:
+            <span id="score">0</span>
+        </div>
+
+        <p id="message">
+            Move your mouse and click to drop the fruit!
+        </p>
+
+    </div>
+
+
+    <div id="game-container">
+
+        <div id="game-over">
+
+            <h2>Game Over!</h2>
+
+            <p>
+                Score:
+                <span id="final-score">0</span>
+            </p>
+
+            <button id="restart">
+                Play Again
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <script>
+
+
+        const {
+            Engine,
+            Render,
+            Runner,
+            Bodies,
+            Composite,
+            Events,
+            Body
+        } = Matter;
+
+
+
+        const WIDTH = 400;
+        const HEIGHT = 600;
+
+
+
+        const FRUITS = [
+
+            {
+                name: "Cherry",
+                radius: 15,
+                color: "#ff4d4d",
+                score: 2
+            },
+
+            {
+                name: "Strawberry",
+                radius: 25,
+                color: "#ff85a2",
+                score: 4
+            },
+
+            {
+                name: "Grape",
+                radius: 35,
+                color: "#a285ff",
+                score: 8
+            },
+
+            {
+                name: "Dekopon",
+                radius: 45,
+                color: "#ffbd85",
+                score: 16
+            },
+
+            {
+                name: "Orange",
+                radius: 55,
+                color: "#ffa500",
+                score: 32
+            },
+
+            {
+                name: "Apple",
+                radius: 65,
+                color: "#ff0000",
+                score: 64
+            },
+
+            {
+                name: "Pear",
+                radius: 75,
+                color: "#d2ff85",
+                score: 128
+            },
+
+            {
+                name: "Peach",
+                radius: 85,
+                color: "#ffc0cb",
+                score: 256
+            },
+
+            {
+                name: "Pineapple",
+                radius: 95,
+                color: "#ffee85",
+                score: 512
+            },
+
+            {
+                name: "Melon",
+                radius: 110,
+                color: "#90ee90",
+                score: 1024
+            },
+
+            {
+                name: "Watermelon",
+                radius: 130,
+                color: "#228b22",
+                score: 2048
+            }
+
+        ];
+
+        let currentScore = 0;
+
+        let nextFruitIndex = 0;
+
+        let previewFruit = null;
+
+        let canDrop = true;
+
+        let gameOver = false;
+
+        let dangerTimer = null;
+
+
+        const engine = Engine.create();
+
+        engine.gravity.y = 1;
+
+
+        const render = Render.create({
+
+            element:
+                document.getElementById(
+                    "game-container"
+                ),
+
+            engine: engine,
+
+            options: {
+
+                width: WIDTH,
+
+                height: HEIGHT,
+
+                wireframes: false,
+
+                background: "#fffaf0"
+
+            }
+
+        });
+
+
+
+        const ground = Bodies.rectangle(
+
+            WIDTH / 2,
+
+            HEIGHT - 6,
+
+            WIDTH,
+
+            12,
+
+            {
+                isStatic: true,
+
+                render: {
+                    fillStyle: "#8b4513"
+                }
+            }
+
+        );
+
+
+        const leftWall = Bodies.rectangle(
+
+            4,
+
+            HEIGHT / 2,
+
+            8,
+
+            HEIGHT,
+
+            {
+                isStatic: true,
+
+                render: {
+                    fillStyle: "#8b4513"
+                }
+            }
+
+        );
+
+
+        const rightWall = Bodies.rectangle(
+
+            WIDTH - 4,
+
+            HEIGHT / 2,
+
+            8,
+
+            HEIGHT,
+
+            {
+                isStatic: true,
+
+                render: {
+                    fillStyle: "#8b4513"
+                }
+            }
+
+        );
+
+
+        Composite.add(
+
+            engine.world,
+
+            [
+                ground,
+                leftWall,
+                rightWall
+            ]
+
+        );
+
+
+        function createFruit(
+            x,
+            y,
+            index,
+            isStatic = false
+        ) {
+
+            const fruitData =
+                FRUITS[index];
+
+
+            const fruit =
+                Bodies.circle(
+
+                    x,
+
+                    y,
+
+                    fruitData.radius,
+
+                    {
+
+                        fruitIndex:
+                            index,
+
+                        restitution:
+                            0.25,
+
+                        friction:
+                            0.3,
+
+                        frictionAir:
+                            0.01,
+
+                        density:
+                            0.001,
+
+                        isStatic:
+                            isStatic,
+
+                        render: {
+
+                            fillStyle:
+                                fruitData.color,
+
+                            strokeStyle:
+                                "#ffffff",
+
+                            lineWidth:
+                                2
+
+                        }
+
+                    }
+
+                );
+
+
+            return fruit;
+        }
+
+
+        function createPreview() {
+
+            if (previewFruit) {
+
+                Composite.remove(
+
+                    engine.world,
+
+                    previewFruit
+
+                );
+
+            }
+
+
+            previewFruit = createFruit(
+
+                WIDTH / 2,
+
+                50,
+
+                nextFruitIndex,
+
+                true
+
+            );
+
+
+            Composite.add(
+
+                engine.world,
+
+                previewFruit
+
+            );
+
+        }
+
+
+        createPreview();
+
+
+
+        function getMousePosition(event) {
+
+            const rect =
+                render.canvas
+                    .getBoundingClientRect();
+
+
+            const scaleX =
+                WIDTH / rect.width;
+
+
+            let x =
+                (event.clientX -
+                    rect.left) *
+                scaleX;
+
+
+            return x;
+
+        }
+
+
+        render.canvas.addEventListener(
+
+            "mousemove",
+
+            function (event) {
+
+                if (
+                    !canDrop ||
+                    gameOver ||
+                    !previewFruit
+                ) {
+                    return;
+                }
+
+
+                const radius =
+                    FRUITS[
+                        nextFruitIndex
+                    ].radius;
+
+
+                let x =
+                    getMousePosition(
+                        event
+                    );
+
+
+                x = Math.max(
+
+                    15 + radius,
+
+                    Math.min(
+
+                        WIDTH -
+                        15 -
+                        radius,
+
+                        x
+
+                    )
+
+                );
+
+
+                Body.setPosition(
+
+                    previewFruit,
+
+                    {
+                        x: x,
+                        y: 50
+                    }
+
+                );
+
+            }
+
+        );
+
+        render.canvas.addEventListener(
+
+            "click",
+
+            function (event) {
+
+                if (
+                    !canDrop ||
+                    gameOver
+                ) {
+                    return;
+                }
+
+
+                const radius =
+                    FRUITS[
+                        nextFruitIndex
+                    ].radius;
+
+
+                let x =
+                    getMousePosition(
+                        event
+                    );
+
+
+                x = Math.max(
+
+                    15 + radius,
+
+                    Math.min(
+
+                        WIDTH -
+                        15 -
+                        radius,
+
+                        x
+
+                    )
+
+                );
+
+
+                const droppedFruit =
+                    createFruit(
+
+                        x,
+
+                        50,
+
+                        nextFruitIndex
+
+                    );
+
+
+                Composite.add(
+
+                    engine.world,
+
+                    droppedFruit
+
+                );
+
+
+
+                if (previewFruit) {
+
+                    Composite.remove(
+
+                        engine.world,
+
+                        previewFruit
+
+                    );
+
+                    previewFruit = null;
+
+                }
+
+
+                canDrop = false;
+
+
+
+                setTimeout(
+
+                    function () {
+
+                        if (gameOver) {
+                            return;
+                        }
+
+
+
+                        nextFruitIndex =
+                            Math.floor(
+
+                                Math.random() * 4
+
+                            );
+
+
+                        createPreview();
+
+
+                        canDrop = true;
+
+                    },
+
+                    700
+
+                );
+
+            }
+
+        );
+
+
+
+        Events.on(
+
+            engine,
+
+            "collisionStart",
+
+            function (event) {
+
+                if (gameOver) {
+                    return;
+                }
+
+
+                event.pairs.forEach(
+
+                    function (pair) {
+
+                        const bodyA =
+                            pair.bodyA;
+
+                        const bodyB =
+                            pair.bodyB;
+
+
+
+                        if (
+
+                            bodyA.fruitIndex ===
+                                undefined ||
+
+                            bodyB.fruitIndex ===
+                                undefined
+
+                        ) {
+
+                            return;
+
+                        }
+
+
+
+                        if (
+
+                            bodyA.fruitIndex !==
+                            bodyB.fruitIndex
+
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        const index =
+                            bodyA.fruitIndex;
+
+                        if (
+
+                            index >=
+                            FRUITS.length - 1
+
+                        ) {
+
+                            return;
+
+                        }
+
+
+
+                        if (
+
+                            bodyA.isMerging ||
+                            bodyB.isMerging
+
+                        ) {
+
+                            return;
+
+                        }
+
+
+                        bodyA.isMerging = true;
+                        bodyB.isMerging = true;
+
+
+                        const newX =
+
+                            (
+                                bodyA.position.x +
+                                bodyB.position.x
+                            ) / 2;
+
+
+                        const newY =
+
+                            (
+                                bodyA.position.y +
+                                bodyB.position.y
+                            ) / 2;
+
+
+
+                        currentScore +=
+                            FRUITS[index].score;
+
+
+                        document.getElementById(
+
+                            "score"
+
+                        ).textContent =
+                            currentScore;
+
+
+
+                        Composite.remove(
+
+                            engine.world,
+
+                            bodyA
+
+                        );
+
+
+                        Composite.remove(
+
+                            engine.world,
+
+                            bodyB
+
+                        );
+
+
+
+                        const newFruit =
+                            createFruit(
+
+                                newX,
+
+                                newY,
+
+                                index + 1
+
+                            );
+
+
+                        Composite.add(
+
+                            engine.world,
+
+                            newFruit
+
+                        );
+
+                    }
+
+                );
+
+            }
+
+        );
+
+
+        Events.on(
+
+            engine,
+
+            "afterUpdate",
+
+            function () {
+
+                if (gameOver) {
+                    return;
+                }
+
+
+                const fruits =
+
+                    Composite
+                        .allBodies(
+                            engine.world
+                        )
+                        .filter(
+
+                            function (body) {
+
+                                return (
+
+                                    body.fruitIndex !==
+                                        undefined &&
+
+                                    !body.isStatic
+
+                                );
+
+                            }
+
+                        );
+
+
+                let danger =
+                    false;
+
+
+                fruits.forEach(
+
+                    function (fruit) {
+
+
+                        if (
+
+                            fruit.position.y <
+                                95 &&
+
+                            Math.abs(
+                                fruit.velocity.y
+                            ) < 0.5
+
+                        ) {
+
+                            danger = true;
+
+                        }
+
+                    }
+
+                );
+
+
+                if (danger) {
+
+                    if (!dangerTimer) {
+
+                        dangerTimer =
+
+                            setTimeout(
+
+                                function () {
+
+                                    checkGameOver();
+
+                                    dangerTimer =
+                                        null;
+
+                                },
+
+                                1500
+
+                            );
+
+                    }
+
+                }
+
+                else {
+
+                    if (dangerTimer) {
+
+                        clearTimeout(
+                            dangerTimer
+                        );
+
+                        dangerTimer = null;
+
+                    }
+
+                }
+
+            }
+
+        );
+
+        function checkGameOver() {
+
+            if (gameOver) {
+                return;
+            }
+
+
+            const fruits =
+
+                Composite
+                    .allBodies(
+                        engine.world
+                    )
+                    .filter(
+
+                        function (body) {
+
+                            return (
+
+                                body.fruitIndex !==
+                                    undefined &&
+
+                                !body.isStatic
+
+                            );
+
+                        }
+
+                    );
+
+
+            const dangerousFruit =
+
+                fruits.some(
+
+                    function (fruit) {
+
+                        return (
+
+                            fruit.position.y <
+                                95 &&
+
+                            Math.abs(
+                                fruit.velocity.y
+                            ) < 1
+
+                        );
+
+                    }
+
+                );
+
+
+            if (dangerousFruit) {
+
+                endGame();
+
+            }
+
+        }
+
+
+
+        function endGame() {
+
+            if (gameOver) {
+                return;
+            }
+
+
+            gameOver = true;
+
+            canDrop = false;
+
+
+            if (previewFruit) {
+
+                Composite.remove(
+
+                    engine.world,
+
+                    previewFruit
+
+                );
+
+                previewFruit = null;
+
+            }
+
+
+            document.getElementById(
+
+                "final-score"
+
+            ).textContent =
+                currentScore;
+
+
+            document.getElementById(
+
+                "game-over"
+
+            ).style.display =
+                "flex";
+
+        }
+
+
+
+        document.getElementById(
+
+            "restart"
+
+        ).addEventListener(
+
+            "click",
+
+            function () {
+
+                location.reload();
+
+            }
+
+        );
+
+
+
+        Render.run(render);
+
+
+        const runner =
+            Runner.create();
+
+
+        Runner.run(
+
+            runner,
+
+            engine
+
+        );
+
+    </script>
+
+</body>
+
+</html>
